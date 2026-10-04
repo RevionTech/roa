@@ -5,6 +5,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 : "${ROA_INSTALLER_IDENTITY:?Set a Developer ID Installer signing identity.}"
 [[ "$ROA_SIGNING_IDENTITY" != - ]] || exit 64
 PROFILE="${ROA_NOTARY_PROFILE:-roa-revion}"
+AUTH=(--keychain-profile "$PROFILE")
+if [[ -n "${ROA_NOTARY_KEYCHAIN:-}" ]]; then
+    AUTH+=(--keychain "$ROA_NOTARY_KEYCHAIN")
+fi
 ROA_UNIVERSAL=1 "$ROOT/scripts/build.sh"
 ZIP="$ROOT/dist/ROA-notarize.zip"
 rm -f "$ZIP"
@@ -13,11 +17,11 @@ rm -f "$ZIP"
 submit() {
     local file="$1" result="$2"
     echo "Waiting for Apple notarization: $(basename "$file")"
-    /usr/bin/xcrun notarytool submit "$file" --keychain-profile "$PROFILE" --wait --output-format json > "$result"
+    /usr/bin/xcrun notarytool submit "$file" "${AUTH[@]}" --wait --output-format json > "$result"
     local id status
     id="$(/usr/bin/plutil -extract id raw -o - "$result")"
     status="$(/usr/bin/plutil -extract status raw -o - "$result")"
-    /usr/bin/xcrun notarytool log "$id" --keychain-profile "$PROFILE" "$result.log"
+    /usr/bin/xcrun notarytool log "$id" "${AUTH[@]}" "$result.log"
     [[ "$status" == Accepted ]] || { echo "Notarization failed: $status; see $result.log" >&2; exit 1; }
 }
 submit "$ZIP" "$ROOT/dist/notary-binaries.json"
