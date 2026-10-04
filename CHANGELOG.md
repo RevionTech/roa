@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.3.0 — 2026-10-04
 
 - Add timed sessions with presets and custom minute/hour entry, enforced by the
   service, with a menu bar countdown.
