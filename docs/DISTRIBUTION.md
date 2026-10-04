@@ -12,6 +12,10 @@ the installation destination. Existing app contents are replaced atomically.
 
 ## Release maintenance
 
+Use the protected **Signed release** workflow for cloud signing and publication;
+see [Release automation](RELEASE_AUTOMATION.md) for credential setup, approval and
+recovery. The commands below remain the local fallback.
+
 Increase `ROAConstants.version`, `CFBundleShortVersionString` and the monotonically
 increasing `CFBundleVersion`. Keep the Sparkle public key and application
 identifier stable across updates. Never replace an existing published artifact.

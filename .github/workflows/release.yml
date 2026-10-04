@@ -1,0 +1,102 @@
+name: Signed release
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Verify CI, sign without publishing, or publish a new version
+        type: choice
+        options: [verify, sign-only, publish]
+        default: verify
+permissions:
+  contents: read
+concurrency:
+  group: signed-release
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'RevionTech/roa' && github.ref == 'refs/heads/main'
+    runs-on: macos-14
+    timeout-minutes: 25
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: metadata
+        name: Validate release version and published state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ inputs.mode }}
+        run: python3 tools/release-preflight.py
+      - run: python3 tools/validate.py
+      - run: python3 -m unittest discover -s tools/tests
+      - run: swift test
+      - name: Build universal development bundle
+        env:
+          ROA_UNIVERSAL: '1'
+        run: ./scripts/build.sh
+  sign:
+    needs: verify
+    if: inputs.mode != 'verify'
+    environment: release
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Download checksum-pinned Sparkle signing tools
+        run: ./scripts/ci/sparkle-tools.sh
+      - name: Import release credentials into an ephemeral Keychain
+        env:
+          ROA_APPLICATION_P12: ${{ secrets.ROA_APPLICATION_P12 }}
+          ROA_APPLICATION_P12_PASSWORD: ${{ secrets.ROA_APPLICATION_P12_PASSWORD }}
+          ROA_INSTALLER_P12: ${{ secrets.ROA_INSTALLER_P12 }}
+          ROA_INSTALLER_P12_PASSWORD: ${{ secrets.ROA_INSTALLER_P12_PASSWORD }}
+          ROA_NOTARY_KEY: ${{ secrets.ROA_NOTARY_KEY }}
+          ROA_NOTARY_KEY_ID: ${{ secrets.ROA_NOTARY_KEY_ID }}
+          ROA_NOTARY_ISSUER_ID: ${{ secrets.ROA_NOTARY_ISSUER_ID }}
+          ROA_SPARKLE_KEY: ${{ secrets.ROA_SPARKLE_KEY }}
+        run: ./scripts/ci/import-credentials.sh
+      - name: Sign, notarize and verify the universal release
+        env:
+          ROA_SIGNING_IDENTITY: 'Developer ID Application: Revion Tech OU (4WP3NZ2BN9)'
+          ROA_INSTALLER_IDENTITY: 'Developer ID Installer: Revion Tech OU (4WP3NZ2BN9)'
+          ROA_NOTARY_PROFILE: roa-ci
+        run: ./scripts/notarize.sh
+      - name: Sign update package and latest-only feed
+        run: ./scripts/publish-update.sh
+      - name: Upload only public release files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-release
+          path: |
+            dist/ROA-*-universal.pkg
+            dist/ROA-*-universal.pkg.sha256
+            updates/appcast.xml
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary credentials
+        if: always()
+        run: ./scripts/ci/cleanup-credentials.sh
+  publish:
+    needs: [verify, sign]
+    if: inputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: signed-release
+          path: release-files
+      - name: Publish immutable package and propose signed feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_MODE: publish
+        run: ./scripts/ci/publish-release.sh

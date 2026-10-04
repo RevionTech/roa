@@ -79,6 +79,8 @@ package before installation. Every update requires administrator authorization,
 updates app/CLI/service together, restores normal sleep and finishes OFF.
 Only the current release is offered; downloaded packages can also be installed
 manually. See [distribution and release maintenance](docs/DISTRIBUTION.md).
+Maintainers can build signed releases on GitHub using the protected
+[release automation workflow](docs/RELEASE_AUTOMATION.md).
 
 Power control has no network dependency. Update checks contact GitHub; macOS
 may contact Apple for signature/notarization verification. ROA has no analytics,
