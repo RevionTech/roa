@@ -2,6 +2,9 @@
 set -euo pipefail
 set +x
 umask 077
+[[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] || {
+    echo 'Credential import is restricted to GitHub-hosted Actions runners.' >&2; exit 64;
+}
 : "${RUNNER_TEMP:?This script requires a GitHub-hosted runner.}"
 : "${ROA_SPARKLE_TOOLS:?Download verified Sparkle tools first.}"
 for name in ROA_APPLICATION_P12 ROA_APPLICATION_P12_PASSWORD ROA_INSTALLER_P12 \
