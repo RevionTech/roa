@@ -85,6 +85,9 @@ limited contents/PR write permissions. Actions and Sparkle tools are checksum/co
 pinned. Temporary Keychain and input files are deleted even after failures; the
 GitHub-hosted VM is destroyed after the job. No CI artifact includes private keys
 or full notarization logs. Do not enable shell tracing or debug credential output.
+Sparkle uses a mode-600 temporary key file through its supported `--ed-key-file`
+interface to avoid interactive Keychain prompts between its tools. The importer
+first checks the existing public key; cleanup deletes the file after signing.
 
 A compromised approved commit, dependency, account or GitHub administrator can
 still compromise keys or publications. Use two-factor authentication, restrict
