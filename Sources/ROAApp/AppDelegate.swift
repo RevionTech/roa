@@ -50,10 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private func refresh() {
         guard let button = statusItem.button else { return }
         let status = store.status()
-        notifications.observe(status: status, request: store.request())
+        let request = store.request()
+        notifications.observe(status: status, request: request)
         diagnostics.update(status: status)
         let fresh = status?.isFresh() == true && status?.version == ROAConstants.version
-        if let pendingRequest, status?.requestID == pendingRequest.id || !fresh {
+        if let pendingRequest, status?.requestID == pendingRequest.id
+            || request?.id != pendingRequest.id || !fresh {
             self.pendingRequest = nil
         }
         let active = fresh && status?.phase == .active && status?.sleepDisabled == true
