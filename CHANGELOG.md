@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Process ON/OFF requests and display service confirmations through filesystem
+  events, retaining periodic safety checks and fallback polling.
+- Show immediate pending feedback without claiming an unconfirmed power change.
+
 ## 0.3.0 — 2026-10-04
 
 - Add timed sessions with presets and custom minute/hour entry, enforced by the
