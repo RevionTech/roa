@@ -125,6 +125,13 @@ installation uses the signed, notarized PKG. See [architecture](docs/ARCHITECTUR
 [contributing](CONTRIBUTING.md), [security](SECURITY.md) and
 [manual acceptance tests](docs/TESTING.md).
 
+Pull requests run one CI workflow; merged `main` commits are checked separately.
+Documentation-only changes use portable checks without a macOS build. Dependabot
+proposes grouped weekly updates to the GitHub Actions used for builds. See
+[repository automation](CONTRIBUTING.md#repository-automation) for review and
+permission requirements and [release automation](docs/RELEASE_AUTOMATION.md) for
+the manually approved signing and publication workflow.
+
 ## License
 
 [MIT](LICENSE) for ROA code and branding. Sparkle retains its included license.
