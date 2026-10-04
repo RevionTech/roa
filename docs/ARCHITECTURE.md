@@ -17,7 +17,8 @@ launchd identifiers use the company namespace `net.reviontech.roa`.
 The installing account atomically writes a bounded request under
 `/var/db/net.reviontech.roa/<uid>/request.json`. Every explicit command creates a
 new UUID. The root daemon observes the request directory for atomic file
-replacements and evaluates new requests after a 50 ms event-coalescing delay.
+replacements and evaluates new requests after a 50 ms event-coalescing delay
+using a strict one-shot timer so background timer coalescing does not add latency.
 Events are hints, never authorization: file ownership, permissions, schema and
 safety policy are still validated. The once-per-second timer remains for guard
 sampling, session expiry and fallback if monitoring is unavailable. The daemon publishes
@@ -123,3 +124,7 @@ command displays an ellipsis immediately; active styling still requires a fresh,
 compatible service confirmation. Its one-second timer remains for countdowns,
 heartbeat freshness and fallback. Directory monitoring rejects symlinks, wrong
 ownership and group/world-writable directories; it opens no privileged channel.
+
+Power commands use process-exit notifications for completion, with a three-second
+timeout, termination request and forced-kill fallback. Sleep-based polling is
+avoided because macOS can substantially coalesce sleeps in a background daemon.

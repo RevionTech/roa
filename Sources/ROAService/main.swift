@@ -160,15 +160,19 @@ func tick() {
 // temporary-file/rename events and bound event-driven work to at most 20 Hz.
 // All events still pass through FileStore validation and the full safety policy.
 var requestRefreshScheduled = false
+let requestTimer = DispatchSource.makeTimerSource(flags: .strict, queue: .main)
+requestTimer.setEventHandler {
+    requestRefreshScheduled = false
+    if store.request() != lastProcessedRequest { tick() }
+}
+requestTimer.resume()
 let requestMonitor = DirectoryChangeMonitor(
     path: URL(fileURLWithPath: store.requestPath).deletingLastPathComponent().path,
     owner: owner, queue: .main) {
         guard !requestRefreshScheduled else { return }
         requestRefreshScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) {
-            requestRefreshScheduled = false
-            if store.request() != lastProcessedRequest { tick() }
-        }
+        // Background process timer coalescing must not delay explicit commands.
+        requestTimer.schedule(deadline: .now() + .milliseconds(50), leeway: .nanoseconds(0))
     }
 
 // Everything runs on one queue: no overlapping pmset operations or state mutations.
