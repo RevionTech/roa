@@ -36,6 +36,10 @@ xcrun notarytool store-credentials roa-ci --key "$SECRET_DIR/notary.p8" \
 EXPECTED="$(plutil -extract SUPublicEDKey raw -o - Resources/Info.plist)"
 ACTUAL="$("$ROA_SPARKLE_TOOLS/bin/generate_keys" --account roa-revion -p)"
 [[ "$EXPECTED" == "$ACTUAL" ]] || { echo 'Sparkle key does not match the installed update trust key.' >&2; exit 1; }
+# A second tool reading a generate_keys-created Keychain item can request GUI
+# authorization. Use Sparkle's supported file interface on headless runners.
+mv "$SECRET_DIR/sparkle.key" "$RUNNER_TEMP/roa-sparkle-signing.key"
+echo "ROA_SPARKLE_KEY_FILE=$RUNNER_TEMP/roa-sparkle-signing.key" >> "$GITHUB_ENV"
 echo "ROA_NOTARY_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 rm -rf "$SECRET_DIR"
 echo 'Release credentials imported; temporary input files removed.'

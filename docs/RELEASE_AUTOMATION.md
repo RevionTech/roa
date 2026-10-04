@@ -74,7 +74,10 @@ PR's CI workflows if GitHub requests approval, then review and merge the feed PR
 after CI passes. No direct push to protected `main` or automatic admin bypass is
 used. Until the PR merges, installed apps continue using the previous signed feed.
 Test the installed update, then retire the preceding release and tag under the
-latest-only policy. Retirement stays manual so a failed installation can be recovered.
+latest-only policy. Also delete signed-package artifacts from retired version's
+Actions runs; public repository artifacts can be downloaded by authenticated users.
+The seven-day retention limit is a fallback, not immediate retirement. Retirement
+stays manual so a failed installation can be recovered.
 
 ## Security and operating limits
 
@@ -85,6 +88,9 @@ limited contents/PR write permissions. Actions and Sparkle tools are checksum/co
 pinned. Temporary Keychain and input files are deleted even after failures; the
 GitHub-hosted VM is destroyed after the job. No CI artifact includes private keys
 or full notarization logs. Do not enable shell tracing or debug credential output.
+Sparkle uses a mode-600 temporary key file through its supported `--ed-key-file`
+interface to avoid interactive Keychain prompts between its tools. The importer
+first checks the existing public key; cleanup deletes the file after signing.
 
 A compromised approved commit, dependency, account or GitHub administrator can
 still compromise keys or publications. Use two-factor authentication, restrict
