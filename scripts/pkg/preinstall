@@ -1,0 +1,53 @@
+#!/bin/bash
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+[[ "$EUID" == 0 && "${3:-/}" == / ]] || exit 64
+base=/var/db/net.reviontech.roa
+legacy=/var/db/net.revion.roa
+lock=/var/run/net.reviontech.roa.install-lock
+backup="$base/update-backup"
+mkdir -m 700 "$lock" || { echo 'Another ROA installation is in progress.' >&2; exit 1; }
+complete=false
+backup_created=false
+cleanup() {
+    result=$?
+    if ! $complete; then
+        if $backup_created; then rm -rf "$backup"; fi
+        rmdir "$lock" || true
+    fi
+    exit "$result"
+}
+trap cleanup EXIT
+for directory in "$base" "$legacy" /Library/PrivilegedHelperTools /Library/LaunchDaemons; do
+    [[ ! -L "$directory" ]] || exit 1
+    if [[ -e "$directory" ]]; then
+        [[ -d "$directory" && "$(stat -f %u "$directory")" == 0 ]] || exit 1
+        permissions="$(stat -f %Lp "$directory")"
+        (( (8#$permissions & 8#022) == 0 )) || exit 1
+    fi
+done
+for file in "$base/owner" "$legacy/owner" /Applications/ROA.app /Library/PrivilegedHelperTools/roa-service /Library/LaunchDaemons/net.reviontech.roa.service.plist; do
+    [[ ! -L "$file" ]] || exit 1
+    if [[ -e "$file" ]]; then [[ "$(stat -f %u "$file")" == 0 ]] || exit 1; fi
+done
+console_uid="$(stat -f %u /dev/console)"
+owner="$console_uid"
+if [[ -f "$base/owner" ]]; then owner="$(cat "$base/owner")";
+elif [[ -f "$legacy/owner" ]]; then owner="$(cat "$legacy/owner")"; fi
+[[ "$owner" =~ ^[0-9]+$ && "$owner" -ge 501 && "$owner" == "$console_uid" ]] || {
+    echo 'Install or update from the account that controls ROA.' >&2; exit 1;
+}
+[[ ! -e "$backup" ]] || { echo 'A previous ROA installation needs recovery.' >&2; exit 1; }
+install -d -o root -g wheel -m 755 "$base" /Library/PrivilegedHelperTools
+mkdir -m 700 "$backup"
+backup_created=true
+printf '%s\n' "$owner" > "$backup/owner"
+if [[ -d /Applications/ROA.app ]]; then ditto /Applications/ROA.app "$backup/ROA.app"; fi
+if [[ -f /Library/PrivilegedHelperTools/roa-service ]]; then cp -p /Library/PrivilegedHelperTools/roa-service "$backup/roa-service"; fi
+if [[ -f /Library/LaunchDaemons/net.reviontech.roa.service.plist ]]; then cp -p /Library/LaunchDaemons/net.reviontech.roa.service.plist "$backup/service.plist"; fi
+# The package contains trusted code; no user-owned executable runs as root.
+launchctl bootout system/net.reviontech.roa.service 2>/dev/null || true
+launchctl bootout system/net.revion.roa.service 2>/dev/null || true
+/usr/bin/pmset -a disablesleep 0
+/usr/bin/pmset -g | /usr/bin/grep -Eq '^[[:space:]]*SleepDisabled[[:space:]]+0[[:space:]]*$'
+complete=true

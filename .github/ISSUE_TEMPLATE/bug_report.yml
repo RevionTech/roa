@@ -1,0 +1,23 @@
+name: Bug report
+description: Report unexpected ROA behavior.
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Mac model, macOS version, ROA release or commit, and source or release installation.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps and observed behavior
+      description: Include the expected result and whether the service reports OFF, ACTIVE, BLOCKED or ERROR.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Relevant diagnostics
+      description: Paste roa status output and relevant errors. Remove personal paths; never include passwords, keys or tokens. Report security vulnerabilities privately.
+      render: text

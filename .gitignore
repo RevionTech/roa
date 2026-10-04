@@ -1,0 +1,15 @@
+/.build/
+/.swiftpm/
+/dist/
+/reports/
+.DS_Store
+*.xcuserstate
+*.p12
+*.p8
+*.key
+*.certSigningRequest
+
+/Review.md
+/REVIEW.md
+/docs/Review.md
+/docs/REVIEW.md

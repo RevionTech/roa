@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>net.reviontech.roa</string>
+	<key>CFBundleName</key>
+	<string>ROA</string>
+	<key>CFBundleDisplayName</key>
+	<string>ROA</string>
+	<key>CFBundleExecutable</key>
+	<string>ROA</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.2.3</string>
+	<key>CFBundleVersion</key>
+	<string>203</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Revion Tech OÜ</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/RevionTech/roa/main/updates/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>sXzLvFtyUrsdoWBnDAXAn3N33xwJcM6cb1WsbkvtZbY=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUPromptUserOnFirstLaunch</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUSendProfileInfo</key>
+	<false/>
+</dict>
+</plist>

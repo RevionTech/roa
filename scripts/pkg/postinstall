@@ -1,0 +1,76 @@
+#!/bin/bash
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+[[ "$EUID" == 0 && "${3:-/}" == / ]] || exit 64
+base=/var/db/net.reviontech.roa
+backup="$base/update-backup"
+lock=/var/run/net.reviontech.roa.install-lock
+app=/Applications/ROA.app
+service=/Library/LaunchDaemons/net.reviontech.roa.service.plist
+[[ -d "$backup" && ! -L "$backup" && "$(stat -f %u "$backup")" == 0 ]] || exit 1
+owner="$(cat "$backup/owner")"
+[[ "$owner" =~ ^[0-9]+$ && "$owner" -ge 501 ]] || exit 64
+account="$(id -nu "$owner")"
+group="$(id -g "$owner")"
+success=false
+cleanup() {
+    result=$?
+    if ! $success; then
+        launchctl bootout system/net.reviontech.roa.service 2>/dev/null || true
+        /usr/bin/pmset -a disablesleep 0 || true
+        rm -f "$service"
+        rm -rf "$app"
+        rm -f /Library/PrivilegedHelperTools/roa-service
+        if [[ -d "$backup/ROA.app" ]]; then ditto "$backup/ROA.app" "$app"; fi
+        if [[ -f "$backup/roa-service" ]]; then cp -p "$backup/roa-service" /Library/PrivilegedHelperTools/roa-service; fi
+        if [[ -f "$backup/service.plist" ]]; then cp -p "$backup/service.plist" "$service"; fi
+        # Rollback remains OFF, even if the old request was ON.
+        if [[ -x "$app/Contents/Helpers/roa" ]]; then
+            sudo -u "#$owner" "$app/Contents/Helpers/roa" off --no-wait || true
+        fi
+        if [[ -f "$service" ]]; then launchctl bootstrap system "$service" || true; fi
+    fi
+    if $success; then rm -rf "$backup"; fi
+    rmdir "$lock" || true
+    exit "$result"
+}
+trap cleanup EXIT
+install -d -o "$owner" -g "$group" -m 700 "$base/$owner"
+printf '%s\n' "$owner" > "$base/owner"
+chmod 644 "$base/owner"
+cp "$app/Contents/Resources/service.plist" "$service"
+/usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string $owner" "$service"
+chown root:wheel "$service"
+chmod 644 "$service"
+# User files are maintained with that user's credentials, never with root rights.
+launchctl asuser "$owner" sudo -H -u "#$owner" /bin/bash -s -- "$app" <<'USER_SCRIPT'
+set -euo pipefail
+app="$1"
+uid="$(id -u)"
+for label in net.revion.roa.menubar net.reviontech.roa.menubar com.revion.travelmode com.revion.travel-mode com.revion.travelmenubar; do
+    /bin/launchctl bootout "gui/$uid/$label" 2>/dev/null || true
+done
+/usr/bin/pkill -u "$uid" -x ROA 2>/dev/null || true
+/usr/bin/pkill -u "$uid" -x TravelModeMenu 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/net.revion.roa.menubar.plist"
+for label in com.revion.travelmode com.revion.travel-mode com.revion.travelmenubar; do
+    plist="$HOME/Library/LaunchAgents/$label.plist"
+    if [[ -f "$plist" ]]; then mv "$plist" "$plist.disabled-by-roa"; fi
+done
+rm -rf "$HOME/Applications/ROA.app" "$HOME/Applications/ROA.app.previous"
+mkdir -p "$HOME/.local/bin" "$HOME/Library/LaunchAgents"
+ln -sfn "$app/Contents/Helpers/roa" "$HOME/.local/bin/roa"
+cp "$app/Contents/Resources/login.plist" "$HOME/Library/LaunchAgents/net.reviontech.roa.menubar.plist"
+"$app/Contents/Helpers/roa" off --no-wait
+USER_SCRIPT
+rm -f /Library/LaunchDaemons/net.revion.roa.service.plist /Library/PrivilegedHelperTools/net.revion.roa.service
+rm -rf /var/run/net.revion.roa /var/db/net.revion.roa
+launchctl bootstrap system "$service"
+sudo -u "#$owner" "$app/Contents/Helpers/roa" off
+expected="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+actual="$(sudo -u "#$owner" "$app/Contents/Helpers/roa" status --json | plutil -extract version raw -o - -)"
+[[ "$actual" == "$expected" ]] || { echo 'App/service version mismatch.' >&2; exit 1; }
+cmp "$app/Contents/Helpers/roa-service" /Library/PrivilegedHelperTools/roa-service
+launchctl asuser "$owner" sudo -H -u "#$owner" /bin/launchctl bootstrap "gui/$owner" \
+    "$(dscl . -read "/Users/$account" NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')/Library/LaunchAgents/net.reviontech.roa.menubar.plist"
+success=true
