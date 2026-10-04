@@ -52,7 +52,7 @@ In **Actions → Signed release → Run workflow**, select `main` and a mode:
 
 | Mode | Result |
 | --- | --- |
-| `verify` | Validate and build both architectures; no secrets or publication. |
+| `verify` | Validate release metadata and require successful main CI for the exact commit; no secrets or publication. |
 | `sign-only` | After environment approval, sign and notarize the current version; save public package, checksum and feed as a seven-day artifact. Publish nothing. |
 | `publish` | Reject an existing version/tag; sign and notarize a new version, publish its package and open a PR for the signed update feed. |
 
@@ -109,3 +109,15 @@ References: [Apple certificates on GitHub runners](https://docs.github.com/en/ac
 [environment protections](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments),
 [notarization authentication](https://developer.apple.com/documentation/notaryapi/submitting-software-for-notarization-over-the-web),
 [GitHub billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+
+The release verification job runs on Linux and waits up to ten minutes for the
+existing `main` push CI run for its exact commit. Failed, cancelled, missing or
+unrelated CI runs cannot authorize signing. This avoids repeating the development
+build and tests in the release workflow. The signing job still builds the
+universal production binaries itself before signing and notarizing them.
+
+The workflow token defaults to read-only. Only the publishing job receives
+`contents: write` and `pull-requests: write`; repository settings must allow
+Actions to create pull requests for its signed-feed PR. The publisher does not
+approve or merge that PR. The protected release environment remains restricted
+to `main` and requires a maintainer's explicit approval.
