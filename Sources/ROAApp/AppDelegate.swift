@@ -7,6 +7,8 @@ import ROAMac
 final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var statusItem: NSStatusItem!
     private var timer: Timer?
+    private var statusMonitor: DirectoryChangeMonitor?
+    private var pendingRequest: ModeRequest?
     private let store = FileStore(owner: getuid())
     private let notifications = NotificationCoordinator()
     private let diagnostics = DiagnosticsWindow()
@@ -33,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         }
         _ = updaterController
         refresh()
+        statusMonitor = DirectoryChangeMonitor(path: ROAConstants.runtimeRoot, owner: 0,
+                                               queue: .main) { [weak self] in
+            self?.refresh()
+        }
+        // Countdown, freshness and monitor-recovery fallback remain 1 Hz.
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             self?.refresh()
         }
@@ -43,19 +50,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private func refresh() {
         guard let button = statusItem.button else { return }
         let status = store.status()
-        notifications.observe(status: status, request: store.request())
+        let request = store.request()
+        notifications.observe(status: status, request: request)
         diagnostics.update(status: status)
         let fresh = status?.isFresh() == true && status?.version == ROAConstants.version
+        if let pendingRequest, status?.requestID == pendingRequest.id
+            || request?.id != pendingRequest.id || !fresh {
+            self.pendingRequest = nil
+        }
         let active = fresh && status?.phase == .active && status?.sleepDisabled == true
         button.alphaValue = active ? 1 : 0.3
         // Keep the selected symbol; add an explicit indicator for faults / guard trips.
-        button.title = !fresh || status?.phase == .blocked || status?.phase == .error ? "!" : ""
-        if active, let remaining = status?.remainingSeconds {
+        button.title = pendingRequest != nil ? "…" : (!fresh || status?.phase == .blocked || status?.phase == .error ? "!" : "")
+        if active, pendingRequest == nil, let remaining = status?.remainingSeconds {
             button.title = " " + SessionPresentation.countdown(remaining)
             button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
             button.imagePosition = .imageLeading
         }
-        let message = fresh ? (status?.reason ?? "Unknown status") : "ROA service is unavailable"
+        let message = pendingRequest.map { $0.enabled ? "Turning ROA on…" : "Turning ROA off…" }
+            ?? (fresh ? (status?.reason ?? "Unknown status") : "ROA service is unavailable")
         button.toolTip = "ROA: \(message)\nClick to turn ROA on or off. Right-click for options."
         button.setAccessibilityLabel("ROA \(active ? "active" : "inactive"): \(message)")
     }
@@ -74,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             return
         }
         do {
-            _ = try store.setEnabled(enabled, duration: duration, chargingOnly: chargingOnly)
+            pendingRequest = try store.setEnabled(enabled, duration: duration, chargingOnly: chargingOnly)
             // Display is based on confirmation; never paint a successful ON prematurely.
             refresh()
         } catch {

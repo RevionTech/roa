@@ -16,7 +16,11 @@ launchd identifiers use the company namespace `net.reviontech.roa`.
 
 The installing account atomically writes a bounded request under
 `/var/db/net.reviontech.roa/<uid>/request.json`. Every explicit command creates a
-new UUID. The root daemon samples once per second, evaluates guards and publishes
+new UUID. The root daemon observes the request directory for atomic file
+replacements and evaluates new requests after a 50 ms event-coalescing delay.
+Events are hints, never authorization: file ownership, permissions, schema and
+safety policy are still validated. The once-per-second timer remains for guard
+sampling, session expiry and fallback if monitoring is unavailable. The daemon publishes
 root-owned status at `/var/run/net.reviontech.roa/status.json`. Clients require a
 fresh heartbeat, matching component version and confirmed power state.
 
@@ -112,3 +116,10 @@ they do not force sleep or guarantee enclosure thermal safety.
 - [Apple thermal state](https://developer.apple.com/documentation/foundation/processinfo/thermalstate-swift.property)
 - [Apple continuous clock](https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time)
 - [Sparkle package updates](https://sparkle-project.org/documentation/package-updates/)
+
+The menu app observes the root-owned status directory and refreshes when the
+service publishes confirmation, avoiding a second polling delay. A pending
+command displays an ellipsis immediately; active styling still requires a fresh,
+compatible service confirmation. Its one-second timer remains for countdowns,
+heartbeat freshness and fallback. Directory monitoring rejects symlinks, wrong
+ownership and group/world-writable directories; it opens no privileged channel.

@@ -29,6 +29,7 @@ let logger = Logger(subsystem: "net.reviontech.roa", category: "service")
 var lastActual: Bool?
 var previousPhase: ModePhase?
 var lastObservation = -Double.infinity
+var lastProcessedRequest: ModeRequest?
 
 func log(_ message: String) {
     logger.notice("\(message, privacy: .public)")
@@ -86,6 +87,7 @@ func persistGuard(allowRepair: Bool, requestID: UUID?) {
 
 func tick() {
     let request = store.request()
+    lastProcessedRequest = request
     let sample = PowerMonitor.sample(owner: owner)
     let bootSessionID = BootSession.currentID()
     let uptime = BootSession.elapsedTime()
@@ -154,9 +156,25 @@ func tick() {
     if reason != lastReason { log(reason); lastReason = reason }
 }
 
+// Wake promptly when an atomic request write changes the directory. Coalesce the
+// temporary-file/rename events and bound event-driven work to at most 20 Hz.
+// All events still pass through FileStore validation and the full safety policy.
+var requestRefreshScheduled = false
+let requestMonitor = DirectoryChangeMonitor(
+    path: URL(fileURLWithPath: store.requestPath).deletingLastPathComponent().path,
+    owner: owner, queue: .main) {
+        guard !requestRefreshScheduled else { return }
+        requestRefreshScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) {
+            requestRefreshScheduled = false
+            if store.request() != lastProcessedRequest { tick() }
+        }
+    }
+
 // Everything runs on one queue: no overlapping pmset operations or state mutations.
 let timer = DispatchSource.makeTimerSource(queue: .main)
 timer.schedule(deadline: .now(), repeating: .seconds(1), leeway: .milliseconds(100))
+// Keep the 1 Hz timer for guards, expiry and recovery if monitoring is unavailable.
 timer.setEventHandler { tick() }
 timer.resume()
 

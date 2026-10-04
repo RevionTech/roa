@@ -49,3 +49,19 @@ validation, XCTest, universal compilation/signature checks and CLI smoke tests.
 Universal compilation does not establish physical behavior on Intel, another
 macOS version or another Mac. Record acceptance evidence privately; avoid local
 machine details and internal audit reports in the public source repository.
+
+## Control response
+
+Directory monitor tests use isolated temporary directories and atomic replacement,
+without the installed service or power changes. Verify request and status events
+are delivered, unsafe monitor directories are rejected, and existing file/safety
+policy tests continue to pass.
+
+On an installed release, check that a click immediately shows the pending ellipsis
+and confirmation updates the icon promptly for both ON and OFF. Repeat with the
+right-click menu and a timed session. Confirm blocked requests never display as
+active, expiry still restores OFF, and rapid ON/OFF requests settle on the latest
+request. If directory monitoring is unavailable, the one-second fallback must
+continue processing requests and showing service freshness. Measure actual
+confirmation time on target devices; filesystem event delivery alone does not
+measure pmset execution or total UI latency.
