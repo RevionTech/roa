@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ROAConstants {
-    public static let version = "0.3.0"
+    public static let version = "0.3.1"
     public static let batteryFloor = 20
     public static let dataRoot = "/var/db/net.reviontech.roa"
     public static let runtimeRoot = "/var/run/net.reviontech.roa"

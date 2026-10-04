@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 — 2026-10-05
 
 - Process ON/OFF requests and display service confirmations through filesystem
   events, retaining periodic safety checks and fallback polling.
