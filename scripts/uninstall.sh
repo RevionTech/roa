@@ -35,6 +35,8 @@ for label in net.reviontech.roa.menubar net.revion.roa.menubar; do
     rm -f "$HOME/Library/LaunchAgents/$label.plist"
 done
 /usr/bin/pkill -u "$OWNER_UID" -x ROA 2>/dev/null || true
+# Delete only ROA's optional notification credential, using the user's Keychain.
+/usr/bin/security delete-generic-password -s net.reviontech.roa.notifications -a telegram 2>/dev/null || true
 rm -f "$HOME/.local/bin/roa"
 rm -rf "$HOME/Applications/ROA.app" "$HOME/Applications/ROA.app.previous"
 for identifier in net.reviontech.roa net.revion.roa; do

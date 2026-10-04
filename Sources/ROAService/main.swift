@@ -23,9 +23,11 @@ if guardNeedsRepair {
     controllerFault = ControllerFault(reason: "Guard record unreadable; turn OFF, then ON to retry",
                                       requestID: nil)
 }
+var lastStopReason = guardRecord?.lastStopReason ?? controllerFault?.reason ?? guardRecord?.trip?.reason
 var lastReason = ""
 let logger = Logger(subsystem: "net.reviontech.roa", category: "service")
 var lastActual: Bool?
+var previousPhase: ModePhase?
 var lastObservation = -Double.infinity
 
 func log(_ message: String) {
@@ -66,7 +68,9 @@ catch { log("Startup recovery failed: \(error)"); exit(1) }
 // Persist both safety and controller faults before enabling, and after any failure.
 // If storage fails, keep the in-memory fault and retry; never enable a new hold.
 func persistGuard(allowRepair: Bool, requestID: UUID?) {
-    let record = GuardRecord(trip: policy.guardTrip, controllerFault: controllerFault)
+    if let fault = controllerFault { lastStopReason = fault.reason }
+    let record = GuardRecord(trip: policy.guardTrip, controllerFault: controllerFault,
+                             lastStopReason: lastStopReason)
     if guardNeedsRepair && !allowRepair { return }
     guard record != lastGuardRecord || guardNeedsRepair else { return }
     do {
@@ -76,25 +80,33 @@ func persistGuard(allowRepair: Bool, requestID: UUID?) {
     } catch {
         controllerFault = ControllerFault(reason: "Guard persistence failed; turn OFF, then ON to retry",
                                           requestID: requestID)
+        lastStopReason = controllerFault?.reason
     }
 }
 
 func tick() {
     let request = store.request()
     let sample = PowerMonitor.sample(owner: owner)
-    let decision = policy.evaluate(request: request, sample: sample)
+    let bootSessionID = BootSession.currentID()
+    let uptime = BootSession.elapsedTime()
+    let decision = policy.evaluate(request: request, sample: sample,
+                                   currentBootSessionID: bootSessionID, currentUptime: uptime,
+                                   requireBootSession: true)
     var phase = decision.phase
     var reason = decision.reason
     var actual: Bool?
     // A control fault also requires an explicit OFF before re-arming.
-    let validOff = request?.schema == 1 && request?.enabled == false
+    let validOff = request?.isSupported == true && request?.enabled == false
+    if previousPhase == .active && decision.phase != .active { lastStopReason = decision.reason }
+    if let trip = policy.guardTrip { lastStopReason = trip.reason }
+    if validOff && lastActual == true { lastStopReason = "ROA turned off" }
     if controllerFault?.permitsRecovery(request: request) == true { controllerFault = nil }
     persistGuard(allowRepair: validOff, requestID: request?.id)
     do {
         let target = decision.allowSleepOverride && controllerFault == nil
         actual = lastActual
         // Guard checks remain 1 Hz; avoid launching pmset every second while stable.
-        if actual != target || ProcessInfo.processInfo.systemUptime - lastObservation >= 5 {
+        if actual != target || !uptime.isFinite || !lastObservation.isFinite || uptime - lastObservation >= 5 {
             actual = try sleepController.current()
             if actual != target {
                 try sleepController.setDisabled(target)
@@ -102,7 +114,7 @@ func tick() {
                 guard actual == target else { throw SleepControllerError.commandFailed }
             }
             lastActual = actual
-            lastObservation = ProcessInfo.processInfo.systemUptime
+            lastObservation = uptime
         }
     } catch {
         controllerFault = ControllerFault(reason: "Sleep control failed; turn OFF, then ON to retry",
@@ -111,7 +123,7 @@ func tick() {
         try? sleepController.setDisabled(false)
         actual = try? sleepController.current()
         lastActual = actual
-        lastObservation = ProcessInfo.processInfo.systemUptime
+        lastObservation = uptime
         log("Power control error: \(error)")
     }
     persistGuard(allowRepair: validOff, requestID: request?.id)
@@ -122,8 +134,15 @@ func tick() {
     }
     let status = ServiceStatus(requestID: request?.id, desired: request?.enabled ?? false,
                                phase: phase, reason: reason, sleepDisabled: actual,
-                               batteryPercent: sample.batteryPercent, thermal: sample.thermal)
-    do { try store.publish(status) }
+                               batteryPercent: sample.batteryPercent, thermal: sample.thermal,
+                               onBattery: sample.onBattery,
+                               remainingSeconds: request?.remainingSeconds(currentBootSessionID: bootSessionID,
+                                                                           currentUptime: uptime),
+                               lastStopReason: lastStopReason)
+    do {
+        try store.publish(status)
+        previousPhase = phase
+    }
     catch {
         try? sleepController.setDisabled(false)
         controllerFault = ControllerFault(reason: "Status publishing failed; turn OFF, then ON to retry",

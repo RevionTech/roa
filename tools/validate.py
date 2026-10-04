@@ -45,6 +45,11 @@ check(plists['service']['ProgramArguments'] == [
 ], 'Unexpected privileged executable / arguments')
 check(plists['service']['KeepAlive'] is True, 'Service must restart after a crash')
 check('KeepAlive' not in plists['login'], 'Quit must not relaunch the menu app')
+check(plists['login']['RunAtLoad'] is False,
+      'Start at login must be opt-in on a fresh installation')
+check(plists['login']['ProgramArguments'] == [
+    '/Applications/ROA.app/Contents/MacOS/ROA'
+], 'Login agent must run only the installed app')
 components = plists['package-components']
 check(len(components) == 1 and
       components[0]['RootRelativeBundlePath'] == 'Applications/ROA.app' and
