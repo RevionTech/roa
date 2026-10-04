@@ -74,7 +74,10 @@ PR's CI workflows if GitHub requests approval, then review and merge the feed PR
 after CI passes. No direct push to protected `main` or automatic admin bypass is
 used. Until the PR merges, installed apps continue using the previous signed feed.
 Test the installed update, then retire the preceding release and tag under the
-latest-only policy. Retirement stays manual so a failed installation can be recovered.
+latest-only policy. Also delete signed-package artifacts from retired version's
+Actions runs; public repository artifacts can be downloaded by authenticated users.
+The seven-day retention limit is a fallback, not immediate retirement. Retirement
+stays manual so a failed installation can be recovered.
 
 ## Security and operating limits
 
