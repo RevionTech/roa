@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-10-05
+
+- Avoid background timer coalescing when processing explicit ON/OFF requests.
+- Wait for power-command completion events instead of sleep-based polling,
+  retaining bounded timeouts and forced termination of unresponsive commands.
+
 ## 0.3.1 — 2026-10-05
 
 - Process ON/OFF requests and display service confirmations through filesystem

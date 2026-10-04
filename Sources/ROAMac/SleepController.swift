@@ -17,17 +17,7 @@ public struct SleepController {
         process.environment = ["PATH": "/usr/bin:/bin", "LC_ALL": "C"]
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
-        try process.run()
-        let deadline = ProcessInfo.processInfo.systemUptime + 3
-        while process.isRunning && ProcessInfo.processInfo.systemUptime < deadline { Thread.sleep(forTimeInterval: 0.02) }
-        if process.isRunning {
-            process.terminate()
-            Thread.sleep(forTimeInterval: 0.1)
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            process.waitUntilExit()
-            throw SleepControllerError.timeout
-        }
-        process.waitUntilExit()
+        try BoundedProcess.run(process)
         guard process.terminationStatus == 0 else { throw SleepControllerError.commandFailed }
         return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     }
