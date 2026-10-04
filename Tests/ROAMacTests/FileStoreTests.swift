@@ -57,4 +57,45 @@ final class FileStoreTests: XCTestCase {
         XCTAssertNil(SleepController.parseSleepDisabled(" sleep 0\n"))
         XCTAssertNil(SleepController.parseSleepDisabled("SleepDisabled invalid\n"))
     }
+
+    func testBootIdentityAndContinuousClockAreStable() throws {
+        let identity = try XCTUnwrap(BootSession.currentID())
+        XCTAssertNotNil(UUID(uuidString: identity))
+        XCTAssertEqual(BootSession.currentID(), identity)
+        let before = BootSession.elapsedTime()
+        XCTAssertTrue(before.isFinite)
+        XCTAssertGreaterThanOrEqual(before, 0)
+        XCTAssertGreaterThanOrEqual(BootSession.elapsedTime(), before)
+    }
+
+    func testSessionRequestStoresVerifiedBootAndContinuousClock() throws {
+        let path = directory.appendingPathComponent("request.json").path
+        let store = FileStore(owner: getuid(), requestPath: path,
+                              statusPath: directory.appendingPathComponent("status.json").path)
+        let before = BootSession.elapsedTime()
+        let request = try store.setEnabled(true, duration: 120, chargingOnly: true)
+        XCTAssertEqual(request.bootSessionID, BootSession.currentID())
+        XCTAssertEqual(request.duration, 120)
+        XCTAssertTrue(request.chargingOnly)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(request.startedAtUptime), before)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(request.startedAtUptime), BootSession.elapsedTime())
+        XCTAssertEqual(store.request(), request)
+        let off = try store.setEnabled(false, duration: 120, chargingOnly: true)
+        XCTAssertFalse(off.enabled)
+        XCTAssertFalse(off.chargingOnly)
+        XCTAssertNil(off.duration)
+        XCTAssertNil(off.bootSessionID)
+        XCTAssertNil(off.startedAtUptime)
+    }
+
+    func testInvalidDurationCannotReplaceExistingRequest() throws {
+        let path = directory.appendingPathComponent("request.json").path
+        let store = FileStore(owner: getuid(), requestPath: path,
+                              statusPath: directory.appendingPathComponent("status.json").path)
+        let original = try store.setEnabled(false)
+        for duration in [59.0, 86401, .infinity, .nan] {
+            XCTAssertThrowsError(try store.setEnabled(true, duration: duration))
+            XCTAssertEqual(store.request(), original)
+        }
+    }
 }

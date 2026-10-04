@@ -3,11 +3,13 @@ import Darwin
 import ROACore
 
 public enum StoreError: Error, LocalizedError {
-    case unsafeFile, notInstalled
+    case unsafeFile, notInstalled, invalidDuration, bootSessionUnavailable
     public var errorDescription: String? {
         switch self {
         case .unsafeFile: return "ROA encountered an invalid or unsafe state file."
         case .notInstalled: return "ROA is not installed for this account. Run ./scripts/install.sh."
+        case .invalidDuration: return "Session duration must be finite and between 60 and 86400 seconds."
+        case .bootSessionUnavailable: return "The current boot session could not be verified. No ON request was saved."
         }
     }
 }
@@ -21,6 +23,13 @@ public struct FileStore {
         self.owner = owner
         requestPath = "\(ROAConstants.dataRoot)/\(owner)/request.json"
         statusPath = "\(ROAConstants.runtimeRoot)/status.json"
+    }
+
+    // Test stores use isolated temporary files, never the installed service's state.
+    init(owner: uid_t, requestPath: String, statusPath: String) {
+        self.owner = owner
+        self.requestPath = requestPath
+        self.statusPath = statusPath
     }
 
     /// No symlink following; only a bounded regular file belonging to the expected UID.
@@ -49,10 +58,23 @@ public struct FileStore {
         try? Self.read(ServiceStatus.self, path: statusPath, owner: 0)
     }
 
-    public func setEnabled(_ enabled: Bool) throws -> ModeRequest {
+    public func setEnabled(_ enabled: Bool, duration: TimeInterval? = nil,
+                           chargingOnly: Bool = false) throws -> ModeRequest {
+        if let duration, !ModeRequest.isValidDuration(duration) { throw StoreError.invalidDuration }
         guard getuid() == owner, FileManager.default.isWritableFile(atPath: URL(fileURLWithPath: requestPath).deletingLastPathComponent().path)
         else { throw StoreError.notInstalled }
-        let request = ModeRequest(enabled: enabled)
+        var bootSessionID: String?
+        var startedAtUptime: TimeInterval?
+        if enabled {
+            guard let identifier = BootSession.currentID() else { throw StoreError.bootSessionUnavailable }
+            let uptime = BootSession.elapsedTime()
+            guard uptime.isFinite, uptime >= 0 else { throw StoreError.bootSessionUnavailable }
+            bootSessionID = identifier
+            startedAtUptime = uptime
+        }
+        let request = ModeRequest(enabled: enabled, duration: enabled ? duration : nil,
+                                  chargingOnly: enabled && chargingOnly,
+                                  bootSessionID: bootSessionID, startedAtUptime: startedAtUptime)
         try Self.write(request, path: requestPath, permissions: 0o600)
         return request
     }

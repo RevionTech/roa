@@ -3,8 +3,8 @@
 | Module | Responsibility |
 | --- | --- |
 | `ROACore` | Versioned JSON models, heartbeat freshness and deterministic safety policy |
-| `ROAMac` | Bounded file IPC, battery/thermal sampling, console-user checks and fixed-argument power commands |
-| `ROAApp` | AppKit menu, confirmed status, OFF-before-quit/update coordination and Sparkle |
+| `ROAMac` | Bounded file IPC, boot identity, power sampling, login preferences, notification transport/Keychain and fixed-argument power commands |
+| `ROAApp` | AppKit menus/windows, countdown, diagnostics, optional notifications, OFF-before-quit/update coordination and Sparkle |
 | `ROACLI` | Request writing, acknowledgement waiting and human/JSON status |
 | `ROAService` | Root daemon, persisted safety/controller faults and power reconciliation |
 
@@ -20,6 +20,11 @@ new UUID. The root daemon samples once per second, evaluates guards and publishe
 root-owned status at `/var/run/net.reviontech.roa/status.json`. Clients require a
 fresh heartbeat, matching component version and confirmed power state.
 
+New requests use schema 2: old services reject them instead of silently ignoring
+timer or charging restrictions. Schema 1 OFF requests remain readable for
+recovery/migration; schema 1 ON is rejected. Status retains schema 1 with optional
+fields and clients verify the service version before enabling a session.
+
 The daemon's only child is `/usr/bin/pmset` with fixed arguments (`-g` or
 `-a disablesleep 0/1`). It accepts no executable path or shell text from clients.
 Reads reject symlinks, nonregular files, wrong ownership, writable permissions
@@ -33,6 +38,36 @@ Power observation occurs immediately on target changes and every five seconds
 while stable. Timeouts use monotonic uptime; status timestamps reject stale or
 future heartbeats. Global sleep settings cannot safely be shared with another
 sleep-management utility.
+
+## Sessions, login and notifications
+
+ON requests are bound to the current macOS boot session. The daemon releases
+sleep prevention before its first evaluation and rejects ON from previous boots,
+including legacy requests without a boot identity. Reboot recovery is independent
+of the menu app and its launch-at-login preference. Invalid or unavailable boot
+identity fails closed. OFF requests remain usable for recovery.
+
+Timed requests carry a duration and monotonic start time. `mach_continuous_time`
+includes time spent asleep and is independent of wall-clock adjustments; the
+wire field `startedAtUptime` carries seconds from this continuous boot clock.
+Durations must be
+finite and between 60 and 86,400 seconds. The service computes remaining time;
+restarting the helper within the same boot does not restart the timer. Expiry
+latches a stop against the request UUID. Wall-clock changes cannot extend it.
+Charging-only requests also latch a stop when AC power is removed; reconnecting
+requires explicit re-arming. All existing battery and thermal guards still apply.
+
+The user-owned login agent has no KeepAlive. Start-at-login is an explicit
+preference, initially false, and changes take effect at the next login. Package
+updates preserve that choice and open the app once after installing in OFF.
+
+Notifications run in the unprivileged menu app. Opt-in macOS authorization and
+optional Telegram delivery are independent of power control. Notification events
+are deduplicated; normal ON/OFF commands do not generate messages. Telegram
+credentials live in a namespaced Keychain item, never in request/status JSON,
+diagnostics or preferences. Transport uses a fixed HTTPS host, an ephemeral
+session, bounded responses/timeouts and rejects redirects. No messages are queued
+for replay after a restart. See [setup and limits](NOTIFICATIONS.md).
 
 ## Installation and updates
 
@@ -75,4 +110,5 @@ they do not force sleep or guarantee enclosure thermal safety.
 
 - [Apple power sources](https://developer.apple.com/documentation/iokit/iopowersources_h)
 - [Apple thermal state](https://developer.apple.com/documentation/foundation/processinfo/thermalstate-swift.property)
+- [Apple continuous clock](https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time)
 - [Sparkle package updates](https://sparkle-project.org/documentation/package-updates/)

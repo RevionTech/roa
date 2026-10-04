@@ -9,7 +9,7 @@
 		<string>/Applications/ROA.app/Contents/MacOS/ROA</string>
 	</array>
 	<key>RunAtLoad</key>
-	<true/>
+	<false/>
 	<key>LimitLoadToSessionType</key>
 	<string>Aqua</string>
 	<key>ProcessType</key>

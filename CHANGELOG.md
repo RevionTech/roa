@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-10-04
+
+- Add timed sessions with presets and custom minute/hour entry, enforced by the
+  service, with a menu bar countdown.
+- Require explicit ON after a Mac restart; preserve unexpired sessions across
+  service restarts within the same boot.
+- Add optional charging-only sessions and optional start at login, both disabled
+  initially; preserve the login preference during updates.
+- Add live status/diagnostics and a privacy-conscious copy action.
+- Add opt-in macOS and Telegram notifications for important events, with bot
+  credentials in Keychain and no notification network dependency for power control.
+
 ## 0.2.3
 
 - Remove local build paths from executable debug symbols before signing.

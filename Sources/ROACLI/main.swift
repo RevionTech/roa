@@ -7,11 +7,15 @@ let store = FileStore(owner: getuid())
 let arguments = Array(CommandLine.arguments.dropFirst())
 let usage = """
 ROA — Run. On. Anywhere.
-Usage: roa on | off | toggle | status [--json] | version | help
+Usage: roa on [--minutes N | --hours N] [--charging-only]
+       roa off | toggle | status [--json] | version | help
        roa off --no-wait   (save OFF before starting the service)
 
-ON persists across restarts and resumes after owner login if guards permit.
-After a safety stop, run 'roa on' to try again.
+Durations range from 1 minute to 24 hours. Without a duration, ON has no timer.
+ON survives service restarts in the current boot; reboot always requires a new ON.
+The timer continues while the app is closed or the owner is logged out.
+--charging-only stops and latches if external power is disconnected.
+After a safety stop or an ended session, run 'roa on' to try again.
 Emergency recovery: sudo /usr/bin/pmset -a disablesleep 0
 """
 
@@ -21,6 +25,32 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
 }
 
 let command = arguments.first ?? "help"
+
+func onOptions(_ options: ArraySlice<String>) -> (duration: TimeInterval?, chargingOnly: Bool) {
+    var duration: TimeInterval?
+    var chargingOnly = false
+    var iterator = options.makeIterator()
+    while let option = iterator.next() {
+        switch option {
+        case "--charging-only":
+            guard !chargingOnly else { fail(usage, code: 64) }
+            chargingOnly = true
+        case "--minutes", "--hours":
+            guard duration == nil, let value = iterator.next(),
+                  value.range(of: #"^(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$"#,
+                              options: .regularExpression) != nil,
+                  let number = Double(value), number.isFinite else { fail(usage, code: 64) }
+            let seconds = number * (option == "--minutes" ? 60 : 3600)
+            guard ModeRequest.isValidDuration(seconds) else {
+                fail("Session duration must be between 1 minute and 24 hours.", code: 64)
+            }
+            duration = seconds
+        default: fail(usage, code: 64)
+        }
+    }
+    return (duration, chargingOnly)
+}
+
 switch command {
 case "help", "--help", "-h":
     guard arguments.count <= 1 else { fail(usage, code: 64) }
@@ -45,13 +75,30 @@ case "status":
         print("\(status.reason)")
         print("Sleep disabled: \(status.sleepDisabled.map { String($0) } ?? "unknown")")
         print("Battery: \(status.batteryPercent.map { "\($0)%" } ?? "unknown")  |  Thermal: \(status.thermal)")
+        print("Power: \(status.onBattery.map { $0 ? "battery" : "external power" } ?? "unknown")")
+        if let remaining = status.remainingSeconds, remaining.isFinite, remaining >= 0 {
+            print("Remaining: \(Int(ceil(remaining))) seconds (service confirmed)")
+        }
+        if let lastStopReason = status.lastStopReason { print("Last stop: \(lastStopReason)") }
     }
 case "on", "off", "toggle":
     let noWait = arguments == ["off", "--no-wait"]
-    guard arguments.count == 1 || noWait else { fail(usage, code: 64) }
+    let options: (duration: TimeInterval?, chargingOnly: Bool)
+    if command == "on" {
+        options = onOptions(arguments.dropFirst())
+    } else {
+        guard arguments.count == 1 || noWait else { fail(usage, code: 64) }
+        options = (nil, false)
+    }
     let enabled = command == "toggle" ? !(store.request()?.enabled ?? false) : command == "on"
+    if enabled {
+        guard let status = store.status(), status.isFresh(), status.version == ROAConstants.version else {
+            fail("A matching, running ROA service is required before turning ON. Check installation / launchd.")
+        }
+    }
     do {
-        let request = try store.setEnabled(enabled)
+        let request = try store.setEnabled(enabled, duration: options.duration,
+                                           chargingOnly: options.chargingOnly)
         if noWait {
             print("ROA: OFF request saved; service confirmation was not requested.")
             exit(0)
@@ -60,7 +107,8 @@ case "on", "off", "toggle":
         while ProcessInfo.processInfo.systemUptime < deadline {
             if let status = store.status(), status.isFresh(), status.requestID == request.id {
                 print("ROA: \(status.phase.rawValue.uppercased()) — \(status.reason)")
-                guard status.version == ROAConstants.version, status.phase == (enabled ? .active : .off), status.sleepDisabled == enabled else {
+                guard !enabled || status.version == ROAConstants.version,
+                      status.phase == (enabled ? .active : .off), status.sleepDisabled == enabled else {
                     fail("Request acknowledged, but the requested power state is not active.", code: 2)
                 }
                 exit(0)

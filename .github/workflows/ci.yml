@@ -26,7 +26,7 @@ jobs:
           ./dist/roa version
           ./dist/roa help
           ./scripts/install.sh --dry-run
-          for command in 'on --no-wait' 'version extra' 'help extra'; do
+          for command in 'on --no-wait' 'on --minutes 0' 'on --hours 25' 'on --minutes NaN' 'version extra' 'help extra'; do
             if ./dist/roa $command; then exit 1; else test "$?" = 64; fi
           done
       - name: Upload ad-hoc signed development bundle

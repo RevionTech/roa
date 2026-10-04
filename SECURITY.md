@@ -17,3 +17,11 @@ and expected versus observed behavior. Never include passwords or access tokens.
 For privileged file handling, installation, and power-control boundaries, see
 [architecture](docs/ARCHITECTURE.md). A fresh ACTIVE status confirms the observed
 power setting; it does not certify safe operation inside an enclosed bag.
+
+ON requests are bound to one boot; timed sessions use monotonic time and are
+enforced by the root service. The menu app's login preference cannot silently
+restore an ON request from before reboot. Notification credentials are stored in
+the user's Keychain; optional Telegram messages are sent by the unprivileged app
+to a fixed HTTPS endpoint. Diagnostics exclude credentials and personal paths.
+No notification delivery result affects the power guard. Report token disclosure,
+unsafe redirects and malformed timer handling through the private channel above.

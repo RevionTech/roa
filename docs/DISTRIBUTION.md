@@ -15,6 +15,11 @@ the installation destination. Existing app contents are replaced atomically.
 Increase `ROAConstants.version`, `CFBundleShortVersionString` and the monotonically
 increasing `CFBundleVersion`. Keep the Sparkle public key and application
 identifier stable across updates. Never replace an existing published artifact.
+Keep the Telegram Keychain service/account stable across updates as well. Login
+launch is opt-in; postinstall preserves the installing user's `launchAtLogin`
+preference, starts the UI once and leaves sleep prevention OFF. Include reboot,
+timer expiry, charging-only and notification privacy checks from the acceptance
+guide before distributing a session-control release.
 
 ```sh
 swift test

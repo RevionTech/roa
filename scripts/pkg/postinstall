@@ -61,6 +61,11 @@ rm -rf "$HOME/Applications/ROA.app" "$HOME/Applications/ROA.app.previous"
 mkdir -p "$HOME/.local/bin" "$HOME/Library/LaunchAgents"
 ln -sfn "$app/Contents/Helpers/roa" "$HOME/.local/bin/roa"
 cp "$app/Contents/Resources/login.plist" "$HOME/Library/LaunchAgents/net.reviontech.roa.menubar.plist"
+# Preserve the explicit login preference; installing opens ROA once regardless.
+login_choice="$(/usr/bin/defaults read net.reviontech.roa launchAtLogin 2>/dev/null || true)"
+if [[ "$login_choice" == 1 || "$login_choice" == true ]]; then
+    /usr/libexec/PlistBuddy -c 'Set :RunAtLoad true' "$HOME/Library/LaunchAgents/net.reviontech.roa.menubar.plist"
+fi
 "$app/Contents/Helpers/roa" off --no-wait
 USER_SCRIPT
 rm -f /Library/LaunchDaemons/net.revion.roa.service.plist /Library/PrivilegedHelperTools/net.revion.roa.service
@@ -73,4 +78,5 @@ actual="$(sudo -u "#$owner" "$app/Contents/Helpers/roa" status --json | plutil -
 cmp "$app/Contents/Helpers/roa-service" /Library/PrivilegedHelperTools/roa-service
 launchctl asuser "$owner" sudo -H -u "#$owner" /bin/launchctl bootstrap "gui/$owner" \
     "$(dscl . -read "/Users/$account" NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')/Library/LaunchAgents/net.reviontech.roa.menubar.plist"
+launchctl asuser "$owner" sudo -H -u "#$owner" /bin/launchctl kickstart "gui/$owner/net.reviontech.roa.menubar"
 success=true

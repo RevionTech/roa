@@ -16,10 +16,11 @@ let package = Package(
     targets: [
         .target(name: "ROACore"),
         .target(name: "ROAMac", dependencies: ["ROACore"],
-                linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("SystemConfiguration")]),
+                linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("SystemConfiguration"),
+                                 .linkedFramework("Security"), .linkedFramework("LocalAuthentication")]),
         .executableTarget(name: "ROAApp", dependencies: [
             "ROACore", "ROAMac", .product(name: "Sparkle", package: "Sparkle")
-        ], linkerSettings: [.linkedFramework("AppKit"),
+        ], linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("UserNotifications"),
                            .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
         .executableTarget(name: "ROACLI", dependencies: ["ROACore", "ROAMac"]),
         .executableTarget(name: "ROAService", dependencies: ["ROACore", "ROAMac"]),

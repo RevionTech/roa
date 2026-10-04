@@ -46,12 +46,132 @@ final class SafetyPolicyTests: XCTestCase {
         XCTAssertEqual(policy.evaluate(request: nil, sample: sample()).phase, .off)
     }
 
-    func testPersistedRequestCanRestoreAfterReboot() throws {
-        let original = ModeRequest(enabled: true)
+    func testPersistedRequestIsRejectedAfterReboot() throws {
+        let original = ModeRequest(enabled: true, bootSessionID: "previous-boot", startedAtUptime: 100)
         let restored = try JSONDecoder().decode(ModeRequest.self, from: JSONEncoder().encode(original))
         var restartedPolicy = SafetyPolicy()
         XCTAssertEqual(original, restored)
-        XCTAssertTrue(restartedPolicy.evaluate(request: restored, sample: sample()).allowSleepOverride)
+        XCTAssertFalse(restartedPolicy.evaluate(request: restored, sample: sample(),
+                                               currentBootSessionID: "new-boot", currentUptime: 200,
+                                               requireBootSession: true).allowSleepOverride)
+    }
+
+    private func timedRequest(duration: TimeInterval = 60, chargingOnly: Bool = false) -> ModeRequest {
+        ModeRequest(enabled: true, duration: duration, chargingOnly: chargingOnly,
+                    bootSessionID: "test-boot", startedAtUptime: 100)
+    }
+
+    private func evaluate(_ policy: inout SafetyPolicy, _ request: ModeRequest,
+                          now: TimeInterval, battery: Bool? = false,
+                          loggedIn: Bool = true) -> ModeDecision {
+        policy.evaluate(request: request, sample: sample(battery: battery, loggedIn: loggedIn),
+                        currentBootSessionID: "test-boot", currentUptime: now, requireBootSession: true)
+    }
+
+    func testDurationBoundsAndInvalidNumbers() {
+        for duration in [60.0, 3600, 86400] { XCTAssertTrue(ModeRequest.isValidDuration(duration)) }
+        for duration in [0.0, 59.999, 86400.001, -.infinity, .infinity, .nan] {
+            XCTAssertFalse(ModeRequest.isValidDuration(duration))
+            var policy = SafetyPolicy()
+            XCTAssertEqual(evaluate(&policy, timedRequest(duration: duration), now: 100).phase, .blocked)
+        }
+    }
+
+    func testTimerExpiresAtBoundaryAndCannotAutomaticallyRearm() {
+        let request = timedRequest()
+        var policy = SafetyPolicy()
+        XCTAssertEqual(evaluate(&policy, request, now: 159.9).phase, .active)
+        XCTAssertEqual(request.remainingSeconds(currentBootSessionID: "test-boot", currentUptime: 159), 1)
+        XCTAssertEqual(evaluate(&policy, request, now: 160).reason, "Session ended")
+        XCTAssertEqual(evaluate(&policy, request, now: 170).phase, .blocked)
+        XCTAssertEqual(request.remainingSeconds(currentBootSessionID: "test-boot", currentUptime: 170), 0)
+        XCTAssertEqual(evaluate(&policy, timedRequest(), now: 100).phase, .active)
+    }
+
+    func testTimerContinuesAcrossDaemonRestartAndOwnerLogout() throws {
+        let request = try JSONDecoder().decode(ModeRequest.self, from: JSONEncoder().encode(timedRequest()))
+        var first = SafetyPolicy()
+        XCTAssertEqual(evaluate(&first, request, now: 120).phase, .active)
+        XCTAssertEqual(evaluate(&first, request, now: 130, loggedIn: false).phase, .blocked)
+        var restarted = SafetyPolicy(restoring: first.guardTrip)
+        XCTAssertEqual(evaluate(&restarted, request, now: 150).phase, .active)
+        // The sampled continuous clock advances through sleep as well as awake time.
+        XCTAssertEqual(evaluate(&restarted, request, now: 500, loggedIn: false).reason, "Session ended")
+        XCTAssertEqual(evaluate(&restarted, request, now: 501).phase, .blocked)
+    }
+
+    func testLegacyRequestsAndMissingOrInvalidBootClockFailClosed() throws {
+        let oldJSON = "{\"schema\":1,\"id\":\"\(UUID().uuidString)\",\"enabled\":true}"
+        let legacy = try JSONDecoder().decode(ModeRequest.self, from: Data(oldJSON.utf8))
+        XCTAssertFalse(legacy.chargingOnly)
+        var policy = SafetyPolicy()
+        XCTAssertEqual(evaluate(&policy, legacy, now: 100).phase, .blocked)
+        for now in [99.0, -.infinity, .infinity, .nan] {
+            var invalidClockPolicy = SafetyPolicy()
+            XCTAssertEqual(evaluate(&invalidClockPolicy, timedRequest(), now: now).phase, .blocked)
+            XCTAssertNil(timedRequest().remainingSeconds(currentBootSessionID: "test-boot", currentUptime: now))
+        }
+        var missingBootPolicy = SafetyPolicy()
+        XCTAssertEqual(missingBootPolicy.evaluate(request: timedRequest(), sample: sample(),
+                                                  currentUptime: 100, requireBootSession: true).phase, .blocked)
+        XCTAssertEqual(missingBootPolicy.evaluate(request: ModeRequest(enabled: false), sample: sample(),
+                                                  requireBootSession: true).phase, .off)
+    }
+
+    func testChargingOnlyStopsLatchUntilNewRequestAndDefaultAllowsBattery() {
+        var policy = SafetyPolicy()
+        let request = timedRequest(chargingOnly: true)
+        XCTAssertEqual(evaluate(&policy, request, now: 100).phase, .active)
+        XCTAssertEqual(evaluate(&policy, request, now: 101, battery: true).phase, .blocked)
+        XCTAssertEqual(evaluate(&policy, request, now: 102).phase, .blocked)
+        XCTAssertEqual(evaluate(&policy, timedRequest(chargingOnly: true), now: 103).phase, .active)
+        XCTAssertEqual(evaluate(&policy, timedRequest(), now: 104, battery: true).phase, .active)
+        XCTAssertEqual(evaluate(&policy, timedRequest(chargingOnly: true), now: 105, battery: nil).phase, .blocked)
+    }
+
+    func testUntimedSessionStillRequiresCurrentBootAndStartObservation() {
+        var policy = SafetyPolicy()
+        let request = ModeRequest(enabled: true, bootSessionID: "test-boot", startedAtUptime: 100)
+        XCTAssertEqual(evaluate(&policy, request, now: 1_000_000).phase, .active)
+        XCTAssertNil(request.remainingSeconds(currentBootSessionID: "test-boot", currentUptime: 1_000_000))
+        let rebooted = policy.evaluate(request: request, sample: sample(), currentBootSessionID: "new-boot",
+                                      currentUptime: 1_000_001, requireBootSession: true)
+        XCTAssertEqual(rebooted.phase, .blocked)
+        XCTAssertEqual(evaluate(&policy, request, now: 1_000_002).phase, .blocked)
+    }
+
+    func testRequestSchemaPreventsOlderServiceFromIgnoringNewSafetyOptions() throws {
+        let current = timedRequest(chargingOnly: true)
+        XCTAssertEqual(current.schema, 2)
+        XCTAssertTrue(current.isSupported)
+        // Version 0.2.3 only accepted schema 1. New ON is rejected by that predicate.
+        XCTAssertFalse(current.schema == 1)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
+        json["schema"] = 1
+        let legacyOn = try JSONDecoder().decode(ModeRequest.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertFalse(legacyOn.isSupported)
+        XCTAssertNil(legacyOn.remainingSeconds(currentBootSessionID: "test-boot", currentUptime: 110))
+        var policy = SafetyPolicy()
+        XCTAssertEqual(evaluate(&policy, legacyOn, now: 110).phase, .blocked)
+        json["enabled"] = false
+        json["id"] = UUID().uuidString
+        let legacyOff = try JSONDecoder().decode(ModeRequest.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertTrue(legacyOff.isSupported)
+        XCTAssertEqual(evaluate(&policy, legacyOff, now: 110).phase, .off)
+        XCTAssertTrue(ControllerFault(reason: "test fault", requestID: current.id).permitsRecovery(request: legacyOff))
+        XCTAssertFalse(ControllerFault(reason: "test fault", requestID: current.id).permitsRecovery(request: legacyOn))
+    }
+
+    func testServiceStatusAndLastStopReasonRoundTrip() throws {
+        let status = ServiceStatus(requestID: UUID(), desired: true, phase: .blocked,
+                                   reason: "Session ended", sleepDisabled: false, batteryPercent: 80,
+                                   thermal: 0, onBattery: false, remainingSeconds: 0,
+                                   lastStopReason: "Session ended")
+        let restored = try JSONDecoder().decode(ServiceStatus.self, from: JSONEncoder().encode(status))
+        XCTAssertEqual(restored.remainingSeconds, 0)
+        XCTAssertEqual(restored.lastStopReason, "Session ended")
+        let record = GuardRecord(trip: nil, lastStopReason: "Session ended")
+        XCTAssertEqual(try JSONDecoder().decode(GuardRecord.self, from: JSONEncoder().encode(record)), record)
     }
 
     func testSafetyLatchSurvivesServiceRestartAndUnreadableRequest() throws {
@@ -96,7 +216,7 @@ final class SafetyPolicyTests: XCTestCase {
         let request = ModeRequest(enabled: true)
         _ = policy.evaluate(request: request, sample: sample(20))
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
-        json["schema"] = 2
+        json["schema"] = 3
         json["enabled"] = false
         let invalid = try JSONDecoder().decode(ModeRequest.self, from: JSONSerialization.data(withJSONObject: json))
         let fault = ControllerFault(reason: "failed", requestID: request.id)
