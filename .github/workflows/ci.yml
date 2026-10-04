@@ -1,22 +1,40 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  macos:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.changes.outputs.native }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: changes
+        run: python3 tools/ci-changes.py
+      - name: Static repository checks
+        run: python3 tools/validate.py
+      - name: Automation guard tests
+        run: python3 -m unittest discover -s tools/tests
+  native:
+    needs: checks
+    if: needs.checks.outputs.native == 'true'
     runs-on: macos-14
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Static repository checks
-        run: python3 tools/validate.py
-      - name: Release publication guard tests
-        run: python3 -m unittest discover -s tools/tests
+        with:
+          persist-credentials: false
       - name: Unit tests (no root / power changes)
         run: swift test
       - name: Build and verify app bundle
@@ -31,9 +49,23 @@ jobs:
           for command in 'on --no-wait' 'on --minutes 0' 'on --hours 25' 'on --minutes NaN' 'version extra' 'help extra'; do
             if ./dist/roa $command; then exit 1; else test "$?" = 64; fi
           done
-      - name: Upload ad-hoc signed development bundle
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ROA-development-universal
-          path: dist/
-          retention-days: 7
+  result:
+    name: CI result
+    needs: [checks, native]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require all applicable checks
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+          NATIVE_REQUIRED: ${{ needs.checks.outputs.native }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          if [ "$NATIVE_REQUIRED" = true ]; then
+            test "$NATIVE_RESULT" = success
+          else
+            test "$NATIVE_REQUIRED" = false
+            test "$NATIVE_RESULT" = skipped
+          fi

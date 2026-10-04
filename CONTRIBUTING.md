@@ -23,4 +23,24 @@ Keep local installation logs, backups and signing credentials out of commits.
 
 Published prereleases are immutable: describe new work in
 `CHANGELOG.md`, and keep release verification and signing separate from the
-ad-hoc CI bundle. Never upload CI artifacts as notarized releases.
+ad-hoc CI bundle. Never publish ad-hoc development artifacts as production releases.
+
+## Repository automation
+
+Each pull request targeting `main` runs CI once. Merging runs CI again on the
+integrated `main` commit. Static checks and automation tests run on Linux;
+Swift tests and the universal build run on macOS when changes affect anything
+other than Markdown documentation or `LICENSE`. The required `CI result` check
+fails if any applicable job fails or is cancelled. Development builds are not
+uploaded as artifacts.
+
+Dependabot groups GitHub Actions updates into one weekly maintenance pull request.
+These updates change build tools, not the installed ROA application. Review major
+version changes and wait for CI before merging; updates are not auto-merged.
+Actions are pinned to full commit hashes. External contributors' workflow runs
+require maintainer approval, and pull request workflows have read-only tokens
+without release secrets.
+
+`main` requires review, resolved review conversations, passing CI and linear
+history. Use squash merges. Release signing is a separate, manually dispatched
+workflow with protected environment approval; a merge does not publish an update.
