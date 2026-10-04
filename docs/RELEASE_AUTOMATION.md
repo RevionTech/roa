@@ -117,12 +117,12 @@ build and tests in the release workflow. The signing job still builds the
 universal production binaries itself before signing and notarizing them.
 
 The workflow token defaults to read-only. Only the publishing job receives
-`contents: write`, `pull-requests: write` and `actions: write`; repository settings must allow
+`contents: write` and `pull-requests: write`; repository settings must allow
 Actions to create pull requests for its signed-feed PR. The publisher does not
 approve or merge that PR. The protected release environment remains restricted
 to `main` and requires a maintainer's explicit approval.
 
-GitHub does not trigger ordinary pull-request workflows for PRs created with
-`GITHUB_TOKEN`. After creating the feed PR, the publisher explicitly dispatches
-CI on that feed branch; this supplies its required checks without storing a PAT.
-The CI workflow can also be dispatched manually to retry a feed check.
+PRs created with `GITHUB_TOKEN` trigger CI in an approval-required state under
+GitHub's current policy. Select **Approve workflows to run** on the feed PR,
+then wait for `CI result` before reviewing and merging. No extra PAT or duplicate
+manual CI dispatch is needed.

@@ -39,7 +39,4 @@ Approve the CI workflows if GitHub requests it, review the feed and merge after 
 BODY
 gh pr create --repo RevionTech/roa --base main --head "$BRANCH" \
     --title "Publish ROA $RELEASE_VERSION update feed" --body-file "$BODY"
-# GITHUB_TOKEN-created PRs do not trigger pull_request workflows. An explicit
-# workflow_dispatch starts CI on the exact feed branch without another credential.
-gh workflow run ci.yml --repo RevionTech/roa --ref "$BRANCH"
 echo 'Package published. Review and merge the feed PR to activate in-app updates.'

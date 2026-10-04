@@ -14,9 +14,6 @@ def main():
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
     if 'pull_request' in event:
         base, head = (event['pull_request'][key]['sha'] for key in ('base', 'head'))
-    elif os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
-        base = subprocess.check_output(['git', 'rev-parse', 'origin/main']).decode().strip()
-        head = os.environ['GITHUB_SHA']
     else:
         base, head = event['before'], event['after']
     if not all(re.fullmatch(r'[0-9a-f]{40}', ref) for ref in (base, head)):
