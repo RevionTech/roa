@@ -6,16 +6,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <link>https://github.com/RevionTech/roa</link>
     <description>Signed ROA updates by Revion Tech.</description>
     <item>
-      <title>ROA 0.3.1</title>
-      <pubDate>Sun, 04 Oct 2026 21:44:45 +0000</pubDate>
-      <sparkle:version>301</sparkle:version>
-      <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
+      <title>ROA 0.3.2</title>
+      <pubDate>Sun, 04 Oct 2026 22:10:46 +0000</pubDate>
+      <sparkle:version>302</sparkle:version>
+      <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
       <description>Update ROA, its CLI and power service together. Installation requires administrator authorization and starts ROA OFF.</description>
-      <enclosure url="https://github.com/RevionTech/roa/releases/download/v0.3.1/ROA-0.3.1-universal.pkg" length="2003477" type="application/octet-stream" sparkle:edSignature="KWgs7UzOFdFu1kTN6Zg0fMaqEyvJfHeBIv7KB/vPUtLtqIUDBY6QPTrUbix/5S3KaMFsY7w3e1Eg7cbqfDNXAA==" sparkle:installationType="package"></enclosure>
+      <enclosure url="https://github.com/RevionTech/roa/releases/download/v0.3.2/ROA-0.3.2-universal.pkg" length="2008217" type="application/octet-stream" sparkle:edSignature="raU1xuJsh2VWeMyAvFAvH6Be7AySV+C8lYRwgeTa2k3iJfIzpAxBNWMc6eeUeYlh4FMoHPKANlLJZ4yzdZA7CQ==" sparkle:installationType="package"></enclosure>
     </item>
   </channel>
 </rss><!-- sparkle-signatures:
-edSignature: HUWq3gZUFBK8CzsMCacuzrWOoB7pFsnAD3XpWqfAGDhvhWEONFVfF41dv5h59kqEp894ITyHASIcUl3m6pmGBg==
+edSignature: D4+Bo3u0VaGOh6P9BluReS5B7mdRYU3h0BF09m2jpmbb+RU8tDPXqeEPs487a9njD3Lo6y/Jh/Kp59cx3/MdCg==
 length: 1322
 -->
