@@ -33,6 +33,9 @@ workflow changes through review. The official repository is configured this way.
    temporarily and sends all eight values to GitHub **environment secrets** over
    stdin. It does not print them or place them in shell arguments or history.
    Native Keychain authorization may be required. Never paste secrets into chat.
+   If both Apple identities and Sparkle are already configured, use
+   `python3 tools/upload-release-secrets.py --notary-only` to upload only the
+   notarization API credentials without replacing existing signing secrets.
 4. Keep encrypted offline backups of the Apple and Sparkle private keys. After a
    successful cloud signing test, remove temporary exports from the Mac. Keep
    the installed Keychain originals. Do not upload P12/P8 files as artifacts.

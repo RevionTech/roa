@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Interactive local credential upload; never print secrets or pass them as args."""
 import base64
+import argparse
 import getpass
 import os
 import plistlib
@@ -59,6 +60,10 @@ def p12(label, role):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--notary-only', action='store_true',
+                        help='Upload only the team notarization API key; preserve existing signing secrets')
+    args = parser.parse_args()
     if not os.isatty(0):
         raise SystemExit('Run this script yourself in an interactive Terminal.')
     os.umask(0o077)
@@ -66,16 +71,29 @@ def main():
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print('Upload ROA credentials directly to the protected GitHub release environment.')
     print('Tokens and passwords will not be displayed or stored in this repository.')
-    app, app_pass = p12('Developer ID Application', 'Developer ID Application:')
-    installer, installer_pass = p12('Developer ID Installer', 'Developer ID Installer:')
+    if not args.notary_only:
+        app, app_pass = p12('Developer ID Application', 'Developer ID Application:')
+        installer, installer_pass = p12('Developer ID Installer', 'Developer ID Installer:')
     _, notary = file_input('App Store Connect API private key (.p8)')
     if b'-----BEGIN PRIVATE KEY-----' not in notary:
         raise SystemExit('Expected an App Store Connect API private key.')
+    valid = subprocess.run(['openssl', 'pkey', '-noout'], input=notary,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if valid.returncode:
+        raise SystemExit('Invalid API private key.')
     key_id = input('API Key ID: ').strip()
     issuer = input('API Issuer ID: ').strip()
     if not re.fullmatch(r'[A-Z0-9]{10}', key_id):
         raise SystemExit('Invalid API Key ID.')
     issuer = str(uuid.UUID(issuer))
+    notary_values = {'ROA_NOTARY_KEY': base64.b64encode(notary),
+                     'ROA_NOTARY_KEY_ID': key_id.encode(),
+                     'ROA_NOTARY_ISSUER_ID': issuer.encode()}
+    if args.notary_only:
+        for name, data in notary_values.items():
+            secret(name, data)
+        print('Notarization secrets uploaded. Existing signing secrets preserved.')
+        return
     tools = Path(input('Sparkle signing tools directory: ').strip()).expanduser().resolve()
     expected = plistlib.loads((ROOT / 'Resources/Info.plist').read_bytes())['SUPublicEDKey']
     actual = subprocess.check_output([str(tools / 'bin/generate_keys'), '--account',
@@ -95,8 +113,7 @@ def main():
         for name, data in {
             'ROA_APPLICATION_P12': app, 'ROA_APPLICATION_P12_PASSWORD': app_pass,
             'ROA_INSTALLER_P12': installer, 'ROA_INSTALLER_P12_PASSWORD': installer_pass,
-            'ROA_NOTARY_KEY': base64.b64encode(notary), 'ROA_NOTARY_KEY_ID': key_id.encode(),
-            'ROA_NOTARY_ISSUER_ID': issuer.encode(), 'ROA_SPARKLE_KEY': sparkle,
+            **notary_values, 'ROA_SPARKLE_KEY': sparkle,
         }.items():
             secret(name, data)
     print('All eight release secrets uploaded. Run Signed release in sign-only mode first.')
