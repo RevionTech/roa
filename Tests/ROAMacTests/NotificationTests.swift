@@ -3,6 +3,32 @@ import ROACore
 @testable import ROAMac
 
 final class NotificationTests: XCTestCase {
+    func testAutomaticRetriesStaySilentButExhaustionNotifies() {
+        var policy = NotificationPolicy()
+        let request = ModeRequest(enabled: true)
+        XCTAssertNil(policy.observe(status: status(request, phase: .active), request: request))
+        let retrying = ServiceStatus(requestID: request.id, desired: true, phase: .error,
+                                     reason: "Sleep control timed out; retrying automatically",
+                                     sleepDisabled: false, batteryPercent: 100, thermal: 0,
+                                     retryingSleepControl: true)
+        XCTAssertNil(policy.observe(status: retrying, request: request))
+        XCTAssertNil(policy.observe(status: retrying, request: request))
+        let failed = status(request, phase: .error, reason: "Sleep control timed out")
+        XCTAssertNotNil(policy.observe(status: failed, request: request))
+        XCTAssertNil(policy.observe(status: failed, request: request))
+    }
+
+    func testSuccessfulAutomaticRecoveryDoesNotNotify() {
+        var policy = NotificationPolicy()
+        let request = ModeRequest(enabled: true)
+        XCTAssertNil(policy.observe(status: status(request, phase: .active), request: request))
+        let retrying = ServiceStatus(requestID: request.id, desired: true, phase: .error,
+                                     reason: "Retrying", sleepDisabled: false, batteryPercent: 100,
+                                     thermal: 0, retryingSleepControl: true)
+        XCTAssertNil(policy.observe(status: retrying, request: request))
+        XCTAssertNil(policy.observe(status: status(request, phase: .active), request: request))
+    }
+
     private func status(_ request: ModeRequest, phase: ModePhase, reason: String = "ROA is active") -> ServiceStatus {
         ServiceStatus(requestID: request.id, desired: request.enabled, phase: phase,
                       reason: reason, sleepDisabled: phase == .active, batteryPercent: 50, thermal: 0)

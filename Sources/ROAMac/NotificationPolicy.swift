@@ -28,6 +28,8 @@ public struct NotificationPolicy {
         let fresh = status?.isFresh(at: now) == true && status?.version == ROAConstants.version &&
             status?.requestID == request?.id
         if fresh, let status {
+            // A bounded retry is still in progress; notify only if recovery fails.
+            if status.retryingSleepControl == true { return nil }
             if status.phase == .active && status.sleepDisabled == true {
                 observedActive = true
                 lastFreshActive = now

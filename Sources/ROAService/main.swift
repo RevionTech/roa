@@ -17,13 +17,13 @@ let guardPath = ROAConstants.dataRoot + "/guard.json"
 let guardRecord = try? FileStore.read(GuardRecord.self, path: guardPath, owner: 0)
 var policy = SafetyPolicy(restoring: guardRecord?.trip)
 var lastGuardRecord = guardRecord
-var controllerFault = guardRecord?.controllerFault
+var recovery = ControllerRecovery(restoring: guardRecord?.controllerFault)
 var guardNeedsRepair = FileManager.default.fileExists(atPath: guardPath) && guardRecord == nil
 if guardNeedsRepair {
-    controllerFault = ControllerFault(reason: "Guard record unreadable; turn OFF, then ON to retry",
-                                      requestID: nil)
+    recovery.latch(ControllerFault(reason: "Guard record unreadable; turn OFF, then ON to retry",
+                                   requestID: nil))
 }
-var lastStopReason = guardRecord?.lastStopReason ?? controllerFault?.reason ?? guardRecord?.trip?.reason
+var lastStopReason = guardRecord?.lastStopReason ?? recovery.fault?.reason ?? guardRecord?.trip?.reason
 var lastReason = ""
 let logger = Logger(subsystem: "net.reviontech.roa", category: "service")
 var lastActual: Bool?
@@ -69,8 +69,10 @@ catch { log("Startup recovery failed: \(error)"); exit(1) }
 // Persist both safety and controller faults before enabling, and after any failure.
 // If storage fails, keep the in-memory fault and retry; never enable a new hold.
 func persistGuard(allowRepair: Bool, requestID: UUID?) {
-    if let fault = controllerFault { lastStopReason = fault.reason }
-    let record = GuardRecord(trip: policy.guardTrip, controllerFault: controllerFault,
+    if let fault = recovery.fault {
+        lastStopReason = recovery.retryPending ? "Sleep control timed out" : fault.reason
+    }
+    let record = GuardRecord(trip: policy.guardTrip, controllerFault: recovery.fault,
                              lastStopReason: lastStopReason)
     if guardNeedsRepair && !allowRepair { return }
     guard record != lastGuardRecord || guardNeedsRepair else { return }
@@ -79,9 +81,9 @@ func persistGuard(allowRepair: Bool, requestID: UUID?) {
         lastGuardRecord = record
         guardNeedsRepair = false
     } catch {
-        controllerFault = ControllerFault(reason: "Guard persistence failed; turn OFF, then ON to retry",
-                                          requestID: requestID)
-        lastStopReason = controllerFault?.reason
+        recovery.latch(ControllerFault(reason: "Guard persistence failed; turn OFF, then ON to retry",
+                                       requestID: requestID))
+        lastStopReason = recovery.fault?.reason
     }
 }
 
@@ -97,18 +99,19 @@ func tick() {
     var phase = decision.phase
     var reason = decision.reason
     var actual: Bool?
-    // A control fault also requires an explicit OFF before re-arming.
+    // Permanent control faults require an explicit OFF before re-arming.
     let validOff = request?.isSupported == true && request?.enabled == false
     if previousPhase == .active && decision.phase != .active { lastStopReason = decision.reason }
     if let trip = policy.guardTrip { lastStopReason = trip.reason }
     if validOff && lastActual == true { lastStopReason = "ROA turned off" }
-    if controllerFault?.permitsRecovery(request: request) == true { controllerFault = nil }
+    recovery.acknowledge(request)
     persistGuard(allowRepair: validOff, requestID: request?.id)
     do {
-        let target = decision.allowSleepOverride && controllerFault == nil
+        let target = recovery.target(for: decision)
         actual = lastActual
         // Guard checks remain 1 Hz; avoid launching pmset every second while stable.
-        if actual != target || !uptime.isFinite || !lastObservation.isFinite || uptime - lastObservation >= 5 {
+        if recovery.retryPending || actual != target || !uptime.isFinite
+            || !lastObservation.isFinite || uptime - lastObservation >= 5 {
             actual = try sleepController.current()
             if actual != target {
                 try sleepController.setDisabled(target)
@@ -117,19 +120,25 @@ func tick() {
             }
             lastActual = actual
             lastObservation = uptime
+            recovery.confirmed()
         }
     } catch {
-        controllerFault = ControllerFault(reason: "Sleep control failed; turn OFF, then ON to retry",
-                                          requestID: request?.id)
         // Best-effort release, followed by observation. Unknown never displays as active.
         try? sleepController.setDisabled(false)
         actual = try? sleepController.current()
+        let isTimeout: Bool
+        if case SleepControllerError.timeout = error { isTimeout = true }
+        else { isTimeout = false }
+        recovery.failed(isTimeout: isTimeout, sleepDisabled: actual, requestID: request?.id)
         lastActual = actual
         lastObservation = uptime
         log("Power control error: \(error)")
     }
     persistGuard(allowRepair: validOff, requestID: request?.id)
-    if let fault = controllerFault { phase = .error; reason = fault.reason }
+    if let fault = recovery.fault {
+        phase = .error
+        reason = recovery.retryPending ? "Sleep control timed out; retrying automatically" : fault.reason
+    }
     if phase == .active && actual != true {
         phase = .error
         reason = "Sleep prevention could not be confirmed"
@@ -140,15 +149,16 @@ func tick() {
                                onBattery: sample.onBattery,
                                remainingSeconds: request?.remainingSeconds(currentBootSessionID: bootSessionID,
                                                                            currentUptime: uptime),
-                               lastStopReason: lastStopReason)
+                               lastStopReason: lastStopReason,
+                               retryingSleepControl: recovery.retryPending ? true : nil)
     do {
         try store.publish(status)
         previousPhase = phase
     }
     catch {
         try? sleepController.setDisabled(false)
-        controllerFault = ControllerFault(reason: "Status publishing failed; turn OFF, then ON to retry",
-                                          requestID: request?.id)
+        recovery.latch(ControllerFault(reason: "Status publishing failed; turn OFF, then ON to retry",
+                                       requestID: request?.id))
         lastActual = nil
         persistGuard(allowRepair: validOff, requestID: request?.id)
         log("Status error: \(error)")

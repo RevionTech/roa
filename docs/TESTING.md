@@ -2,7 +2,9 @@
 
 `swift test` exercises deterministic policy, persisted faults, invalid telemetry,
 heartbeat freshness, file ownership/types/permissions, bounded writes and power
-output parsing. Tests never install services or change power. CI runs repository
+output parsing. Recovery tests cover transient timeouts, exhausted retries,
+unconfirmed release, permanent faults, restart persistence and notifications.
+Tests never install services or change power. CI runs repository
 validation, XCTest, universal compilation/signature checks and CLI smoke tests.
 
 ## Manual acceptance on a MacBook

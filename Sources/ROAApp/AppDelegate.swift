@@ -54,14 +54,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         notifications.observe(status: status, request: request)
         diagnostics.update(status: status)
         let fresh = status?.isFresh() == true && status?.version == ROAConstants.version
-        if let pendingRequest, status?.requestID == pendingRequest.id
+        if let pendingRequest, (status?.requestID == pendingRequest.id && status?.retryingSleepControl != true)
             || request?.id != pendingRequest.id || !fresh {
             self.pendingRequest = nil
         }
         let active = fresh && status?.phase == .active && status?.sleepDisabled == true
         button.alphaValue = active ? 1 : 0.3
         // Keep the selected symbol; add an explicit indicator for faults / guard trips.
-        button.title = pendingRequest != nil ? "…" : (!fresh || status?.phase == .blocked || status?.phase == .error ? "!" : "")
+        button.title = pendingRequest != nil || (fresh && status?.retryingSleepControl == true)
+            ? "…" : (!fresh || status?.phase == .blocked || status?.phase == .error ? "!" : "")
         if active, pendingRequest == nil, let remaining = status?.remainingSeconds {
             button.title = " " + SessionPresentation.countdown(remaining)
             button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)

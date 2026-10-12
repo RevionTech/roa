@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ROAConstants {
-    public static let version = "0.3.2"
+    public static let version = "0.3.3"
     public static let batteryFloor = 20
     public static let dataRoot = "/var/db/net.reviontech.roa"
     public static let runtimeRoot = "/var/run/net.reviontech.roa"
@@ -72,11 +72,12 @@ public struct ServiceStatus: Codable {
     public let onBattery: Bool?
     public let remainingSeconds: TimeInterval?
     public let lastStopReason: String?
+    public let retryingSleepControl: Bool?
 
     public init(requestID: UUID?, desired: Bool, phase: ModePhase, reason: String,
                 sleepDisabled: Bool?, batteryPercent: Int?, thermal: Int,
                 onBattery: Bool? = nil, remainingSeconds: TimeInterval? = nil,
-                lastStopReason: String? = nil) {
+                lastStopReason: String? = nil, retryingSleepControl: Bool? = nil) {
         schema = 1
         version = ROAConstants.version
         updatedAt = Date()
@@ -90,6 +91,7 @@ public struct ServiceStatus: Codable {
         self.onBattery = onBattery
         self.remainingSeconds = remainingSeconds
         self.lastStopReason = lastStopReason
+        self.retryingSleepControl = retryingSleepControl
     }
 
     public func isFresh(at now: Date = Date()) -> Bool {
