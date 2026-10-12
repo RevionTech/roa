@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 — 2026-10-12
+
+- Automatically retry transient sleep-control timeouts up to twice after normal
+  sleep is confirmed, rechecking safety conditions and the latest request before
+  each attempt. Persistent failures still require explicit OFF/ON recovery.
+- Show pending feedback during automatic recovery and reserve stop notifications
+  for failed recovery.
+
 ## 0.3.2 — 2026-10-05
 
 - Avoid background timer coalescing when processing explicit ON/OFF requests.

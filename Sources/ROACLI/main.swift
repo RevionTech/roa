@@ -105,7 +105,8 @@ case "on", "off", "toggle":
         }
         let deadline = ProcessInfo.processInfo.systemUptime + 12
         while ProcessInfo.processInfo.systemUptime < deadline {
-            if let status = store.status(), status.isFresh(), status.requestID == request.id {
+            if let status = store.status(), status.isFresh(), status.requestID == request.id,
+               status.retryingSleepControl != true {
                 print("ROA: \(status.phase.rawValue.uppercased()) — \(status.reason)")
                 guard !enabled || status.version == ROAConstants.version,
                       status.phase == (enabled ? .active : .off), status.sleepDisabled == enabled else {

@@ -37,8 +37,16 @@ and payloads larger than 8 KiB. Writes use exclusive temporary files, fsync and
 atomic rename. A validated exclusive service lock prevents duplicate controllers.
 
 Battery/thermal trips are persisted before enabling a hold. A new ON request
-retries only when conditions permit. Control/status publication faults survive
-restarts and need a new OFF request before ON. Unknown telemetry fails closed.
+retries only when conditions permit. A power-command timeout permits up to two
+automatic retries only after normal sleep is observed. Each retry runs on a new
+service tick with a fresh request, safety sample and session-expiry decision;
+recovery always forces a new power observation. The fault remains persisted until
+the current target is confirmed. Retry permission exists only in memory, so a
+service restart cannot silently re-arm a faulted session. Other control faults,
+exhausted retries and status/storage failures need a new OFF request before ON.
+Unknown telemetry fails closed. Status has an optional `retryingSleepControl`
+flag so clients show pending feedback and wait for the outcome; notifications
+remain silent during bounded recovery.
 Power observation occurs immediately on target changes and every five seconds
 while stable. Timeouts use monotonic uptime; status timestamps reject stale or
 future heartbeats. Global sleep settings cannot safely be shared with another
